@@ -257,12 +257,12 @@ function AuthPanel({ session, authReady, syncing, authError, sendCode, verifyCod
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const submitEmail = async (event) => { event.preventDefault(); if (!email.includes('@')) return; setBusy(true); setSent(await sendCode(email)); setBusy(false); };
-  const submitCode = async (event) => { event.preventDefault(); if (code.length < 6) return; setBusy(true); await verifyCode(email, code); setBusy(false); };
+  const submitCode = async (event) => { event.preventDefault(); if (code.length !== 8) return; setBusy(true); await verifyCode(email, code); setBusy(false); };
   if (!authReady) return <div className="auth-panel auth-loading">正在检查登录状态…</div>;
   if (session?.user) return <div className="auth-panel auth-signed"><span>已登录：{session.user.email}</span><span className="auth-sync">{syncing ? '正在同步…' : '云端已同步'}</span><button type="button" onClick={signOut}>退出登录</button></div>;
   return <section className="auth-panel" aria-label="邮箱登录">
     <div><strong>跨设备同步</strong><span>使用同一个邮箱登录，手机和电脑共享工作台记录</span></div>
-    {!sent ? <form onSubmit={submitEmail}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="输入邮箱地址" aria-label="登录邮箱" required /><button className="primary-button" disabled={busy}>{busy ? '发送中…' : '发送验证码'}</button></form> : <form onSubmit={submitCode}><input inputMode="numeric" maxLength="6" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="输入6位验证码" aria-label="邮箱验证码" required /><button className="primary-button" disabled={busy}>{busy ? '验证中…' : '确认登录'}</button><button type="button" className="auth-link" onClick={() => setSent(false)}>更换邮箱</button></form>}
+    {!sent ? <form onSubmit={submitEmail}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="输入邮箱地址" aria-label="登录邮箱" required /><button className="primary-button" disabled={busy}>{busy ? '发送中…' : '发送验证码'}</button></form> : <form onSubmit={submitCode}><input inputMode="numeric" maxLength="8" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="输入8位验证码" aria-label="邮箱验证码" required /><button className="primary-button" disabled={busy}>{busy ? '验证中…' : '确认登录'}</button><button type="button" className="auth-link" onClick={() => setSent(false)}>更换邮箱</button></form>}
     {authError && <p className="auth-error" role="alert">{authError}</p>}
   </section>;
 }
