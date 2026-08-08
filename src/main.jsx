@@ -24,6 +24,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import './styles.css';
+import { supabase } from './supabase';
 
 const NAV_ITEMS = [
   { id: 'home', label: '桌面', icon: CloudSun, tone: 'sky' },
@@ -69,6 +70,95 @@ function usePersistentData() {
 
   useEffect(() => localStorage.setItem('cloud-bear-workbench', JSON.stringify(data)), [data]);
   return [data, setData];
+}
+
+function mergeWorkbenchData(localData, cloudData) {
+  if (!cloudData) return localData;
+  const mergeList = (local = [], cloud = []) => {
+    const cloudIds = new Set(cloud.map((item) => item.id));
+    return [...cloud, ...local.filter((item) => !cloudIds.has(item.id))];
+  };
+  return {
+    ...DEFAULT_DATA,
+    ...cloudData,
+    profile: { ...DEFAULT_DATA.profile, ...(cloudData.profile || {}) },
+    tasks: mergeList(localData.tasks, cloudData.tasks),
+    records: mergeList(localData.records, cloudData.records),
+    events: mergeList(localData.events, cloudData.events),
+  };
+}
+
+function useAccountSync(data, setData, notify) {
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data: result }) => {
+      if (active) { setSession(result.session); setAuthReady(true); }
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (active) setSession(nextSession);
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user || !authReady) return;
+    let cancelled = false;
+    const sync = async () => {
+      setSyncing(true); setAuthError('');
+      const { data: cloudRow, error: readError } = await supabase
+        .from('workbench_data')
+        .select('data')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+      const migrationKey = `cloud-bear-migrated-${session.user.id}`;
+      const hasMigrated = localStorage.getItem(migrationKey) === 'true';
+      const merged = cloudRow?.data && hasMigrated ? cloudRow.data : mergeWorkbenchData(data, cloudRow?.data);
+      if (!cancelled) setData(merged);
+      const { error: writeError } = await supabase.from('workbench_data').upsert({
+        user_id: session.user.id,
+        data: merged,
+        updated_at: new Date().toISOString(),
+      });
+      if (!writeError) localStorage.setItem(migrationKey, 'true');
+      if (!cancelled) { setSyncing(false); if (readError || writeError) setAuthError('云端同步失败，当前仍保留本地记录'); }
+    };
+    sync();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, authReady]);
+
+  useEffect(() => {
+    if (!session?.user || !authReady || syncing) return;
+    const timer = window.setTimeout(async () => {
+      const { error } = await supabase.from('workbench_data').upsert({
+        user_id: session.user.id,
+        data,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) setAuthError('云端同步失败，当前仍保留本地记录');
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [data, session?.user?.id, authReady, syncing]);
+
+  const sendCode = async (email) => {
+    setAuthError('');
+    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
+    if (error) { setAuthError(error.message || '验证码发送失败，请稍后重试'); return false; }
+    notify('验证码已发送，请查收邮箱'); return true;
+  };
+  const verifyCode = async (email, code) => {
+    setAuthError('');
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
+    if (error) { setAuthError('验证码无效或已过期，请重新获取'); return false; }
+    notify('登录成功，数据已开始同步'); return true;
+  };
+  const signOut = async () => { await supabase.auth.signOut(); notify('已退出登录，本地记录仍保留'); };
+  return { session, authReady, syncing, authError, sendCode, verifyCode, signOut };
 }
 
 function getGreeting(date) {
@@ -129,6 +219,8 @@ function App() {
     window.setTimeout(() => setToast(''), 2200);
   };
 
+  const account = useAccountSync(data, setData, notify);
+
   const pageProps = { data, setData, notify, setActive, installApp, canInstall: Boolean(installPrompt), isInstalled };
   const pages = {
     home: <HomePage {...pageProps} />,
@@ -145,7 +237,10 @@ function App() {
   return (
     <div className="app-shell">
       <Sidebar active={active} onSelect={setActive} />
-      <main className="main-content">{pages[active]}</main>
+      <main className="main-content">
+        <AuthPanel {...account} />
+        {pages[active]}
+      </main>
       {toast && <div className="toast" role="status"><Check size={18} />{toast}</div>}
       {needRefresh && <div className="update-toast" role="status">
         <span>工作台有新版本</span>
@@ -154,6 +249,22 @@ function App() {
       </div>}
     </div>
   );
+}
+
+function AuthPanel({ session, authReady, syncing, authError, sendCode, verifyCode, signOut }) {
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const submitEmail = async (event) => { event.preventDefault(); if (!email.includes('@')) return; setBusy(true); setSent(await sendCode(email)); setBusy(false); };
+  const submitCode = async (event) => { event.preventDefault(); if (code.length < 6) return; setBusy(true); await verifyCode(email, code); setBusy(false); };
+  if (!authReady) return <div className="auth-panel auth-loading">正在检查登录状态…</div>;
+  if (session?.user) return <div className="auth-panel auth-signed"><span>已登录：{session.user.email}</span><span className="auth-sync">{syncing ? '正在同步…' : '云端已同步'}</span><button type="button" onClick={signOut}>退出登录</button></div>;
+  return <section className="auth-panel" aria-label="邮箱登录">
+    <div><strong>跨设备同步</strong><span>使用同一个邮箱登录，手机和电脑共享工作台记录</span></div>
+    {!sent ? <form onSubmit={submitEmail}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="输入邮箱地址" aria-label="登录邮箱" required /><button className="primary-button" disabled={busy}>{busy ? '发送中…' : '发送验证码'}</button></form> : <form onSubmit={submitCode}><input inputMode="numeric" maxLength="6" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="输入6位验证码" aria-label="邮箱验证码" required /><button className="primary-button" disabled={busy}>{busy ? '验证中…' : '确认登录'}</button><button type="button" className="auth-link" onClick={() => setSent(false)}>更换邮箱</button></form>}
+    {authError && <p className="auth-error" role="alert">{authError}</p>}
+  </section>;
 }
 
 function Sidebar({ active, onSelect }) {
