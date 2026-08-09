@@ -88,6 +88,7 @@
         <input id="refInput" type="file" accept="image/*" hidden />
         <label>参考图透明度 <input id="refOpacity" type="range" min="15" max="85" value="48" /></label>
         <button id="clearRefBtn">清除</button>
+        <button id="refQuickBtn">50%</button>
       </div>
       <div class="subtools">
         <button id="gridBtn">网格开</button>
@@ -177,6 +178,7 @@ $('closeSaveSheet').onclick=()=>$('saveSheet').classList.remove('open');
 $('refBtn').onclick=()=>{refInput.click()};
 refInput.onchange=e=>{const file=e.target.files?.[0];if(!file)return;const url=URL.createObjectURL(file);const img=new Image();img.onload=()=>{state.reference={image:img,loaded:true,url};reference.src=url;showToast('参考图已加载');render()};img.src=url};
 $('refOpacity').oninput=e=>{state.referenceOpacity=Number(e.target.value);render()};
+$('refQuickBtn').onclick=()=>{$('refOpacity').value='50';state.referenceOpacity=50;render();showToast('参考图已调到 50%')};
 $('clearRefBtn').onclick=()=>{if(state.reference?.url)URL.revokeObjectURL(state.reference.url);state.reference=null;reference.removeAttribute('src');showToast('参考图已清除');render()};
 $('flipGuideBtn').onclick=()=>{state.saveGuide=!state.saveGuide;showToast(state.saveGuide?'保存时包含辅助线':'保存时不含辅助线');render()};
 window.addEventListener('resize',()=>{resizeOverlay();drawOverlay()});
