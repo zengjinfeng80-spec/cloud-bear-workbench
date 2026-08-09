@@ -92,6 +92,7 @@
         <button id="refQuickBtn">50%</button>
       </div>
       <div class="ref-manip" id="refManip">
+        <button id="refFitBtn">自动适配</button>
         <button id="refSmallBtn">缩小</button>
         <button id="refBigBtn">放大</button>
         <button id="refRotateBtn">旋转</button>
@@ -151,6 +152,7 @@ function resizeOverlay(){const w=camera.clientWidth,h=camera.clientHeight;if(!w|
 function paintFreezeFrame(){if(!freezeCtx||!state.freezeSource)return;freezeCtx.clearRect(0,0,freezeFrame.width,freezeFrame.height);freezeCtx.drawImage(state.freezeSource,0,0,state.freezeSource.width,state.freezeSource.height,0,0,freezeFrame.width,freezeFrame.height);freezeFrame.classList.add('show')}
 function clearFreeze(){state.freeze=false;state.freezeSource=null;if(freezeCtx&&freezeFrame.width&&freezeFrame.height)freezeCtx.clearRect(0,0,freezeFrame.width,freezeFrame.height);freezeFrame.classList.remove('show')}
 function syncReferenceTransform(){if(!reference)return;reference.style.setProperty('--ref-x',`${state.refX}px`);reference.style.setProperty('--ref-y',`${state.refY}px`);reference.style.setProperty('--ref-scale',state.refScale);reference.style.setProperty('--ref-rotate',`${state.refRotate}deg`);reference.style.setProperty('--ref-flip',state.refFlip);refManip.classList.toggle('show',!!state.reference)}
+function fitReference(){state.refX=0;state.refY=0;state.refRotate=0;state.refFlip=1;state.refScale=1;render();showToast('参考图已自动适配')}
 function getVideoRect(){const vw=video.videoWidth||720,vh=video.videoHeight||1280;const cw=camera.clientWidth,ch=camera.clientHeight;const videoRatio=vw/vh,boxRatio=cw/ch;let drawW,drawH,offsetX=0,offsetY=0;if(videoRatio>boxRatio){drawH=ch;drawW=drawH*videoRatio;offsetX=(cw-drawW)/2}else{drawW=cw;drawH=drawW/videoRatio;offsetY=(ch-drawH)/2}return{vw,vh,cw,ch,drawW,drawH,offsetX,offsetY}}
 function drawOverlay(){if(!overlayCtx)return;const r=getVideoRect();overlayCtx.clearRect(0,0,overlay.width,overlay.height);if(!state.detectEnabled)return;const sx=overlay.width/r.cw,sy=overlay.height/r.ch;const face=state.face?.bbox;const pose=state.pose?.landmarks;if(face){overlayCtx.save();overlayCtx.strokeStyle='rgba(146,224,178,.95)';overlayCtx.lineWidth=3*devicePixelRatio;overlayCtx.strokeRect((r.offsetX+face.originX*r.drawW)*sx,(r.offsetY+face.originY*r.drawH)*sy,face.width*r.drawW*sx,face.height*r.drawH*sy);overlayCtx.restore()}if(pose?.length){const idx=[11,12,13,14,15,16,23,24,25,26,27,28].filter(i=>pose[i]);overlayCtx.save();overlayCtx.strokeStyle='rgba(255,211,138,.9)';overlayCtx.lineWidth=2*devicePixelRatio;overlayCtx.fillStyle='rgba(255,211,138,.95)';for(const i of idx){const p=pose[i];overlayCtx.beginPath();overlayCtx.arc((r.offsetX+p.x*r.drawW)*sx,(r.offsetY+p.y*r.drawH)*sy,4*devicePixelRatio,0,Math.PI*2);overlayCtx.fill()}const pairs=[[11,12],[11,13],[12,14],[13,15],[14,16],[23,24],[11,23],[12,24],[23,25],[24,26],[25,27],[26,28]];for(const [a,b] of pairs){if(pose[a]&&pose[b]){overlayCtx.beginPath();overlayCtx.moveTo((r.offsetX+pose[a].x*r.drawW)*sx,(r.offsetY+pose[a].y*r.drawH)*sy);overlayCtx.lineTo((r.offsetX+pose[b].x*r.drawW)*sx,(r.offsetY+pose[b].y*r.drawH)*sy);overlayCtx.stroke()}}overlayCtx.restore()}}
 function toPoint(box){return{x:box.originX+box.width/2,y:box.originY+box.height/2}}
@@ -196,7 +198,7 @@ $('closeSheet').onclick=()=>$('poseSheet').classList.remove('open');
 $('closeSaveSheet').onclick=()=>$('saveSheet').classList.remove('open');
 $('sharePhotoBtn').onclick=()=>shareCurrentPhoto();
 $('refBtn').onclick=()=>{refInput.click()};
-refInput.onchange=e=>{const file=e.target.files?.[0];if(!file)return;const url=URL.createObjectURL(file);const img=new Image();img.onload=()=>{state.refX=0;state.refY=0;state.refScale=1;state.refRotate=0;state.refFlip=1;state.reference={image:img,loaded:true,url};reference.src=url;showToast('参考图已加载，可拖动/缩放');render()};img.src=url};
+refInput.onchange=e=>{const file=e.target.files?.[0];if(!file)return;const url=URL.createObjectURL(file);const img=new Image();img.onload=()=>{state.refX=0;state.refY=0;state.refScale=1;state.refRotate=0;state.refFlip=1;state.reference={image:img,loaded:true,url};reference.src=url;showToast('参考图已加载，可拖动/缩放');render();fitReference()};img.src=url};
 $('refOpacity').oninput=e=>{state.referenceOpacity=Number(e.target.value);render()};
 $('refQuickBtn').onclick=()=>{$('refOpacity').value='50';state.referenceOpacity=50;render();showToast('参考图已调到 50%')};
 $('clearRefBtn').onclick=()=>{if(state.reference?.url)URL.revokeObjectURL(state.reference.url);state.reference=null;state.refX=0;state.refY=0;state.refScale=1;state.refRotate=0;state.refFlip=1;reference.removeAttribute('src');showToast('参考图已清除');render()};
@@ -205,6 +207,7 @@ $('refBigBtn').onclick=()=>{state.refScale=Math.min(1.8,Math.round((state.refSca
 $('refRotateBtn').onclick=()=>{state.refRotate=(state.refRotate+90)%360;render();showToast('参考图已旋转')};
 $('refFlipBtn').onclick=()=>{state.refFlip=state.refFlip===1?-1:1;render();showToast('参考图已翻转')};
 $('refResetBtn').onclick=()=>{state.refX=0;state.refY=0;state.refScale=1;state.refRotate=0;state.refFlip=1;render();showToast('参考图已复位')};
+$('refFitBtn').onclick=()=>fitReference();
 $('refDragHintBtn').onclick=()=>showToast('按住参考图可拖动');
 $('flipGuideBtn').onclick=()=>{state.saveGuide=!state.saveGuide;showToast(state.saveGuide?'保存时包含辅助线':'保存时不含辅助线');render()};
 window.addEventListener('resize',()=>{resizeOverlay();drawOverlay()});
