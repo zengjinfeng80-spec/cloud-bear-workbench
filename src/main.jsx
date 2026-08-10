@@ -16,6 +16,7 @@ import {
   Laptop,
   MoonStar,
   NotebookPen,
+  Pencil,
   Plus,
   Settings2,
   Sparkles,
@@ -54,6 +55,23 @@ const DEFAULT_DATA = {
     { id: 1, title: '复习经济法', date: '2026-08-01', time: '19:30', reminder: '提前15分钟' },
     { id: 2, title: '月度复盘', date: '2026-08-02', time: '20:00', reminder: '提前1小时' },
   ],
+  fitnessEntries: [
+    { id: 1, type: '饮食', date: '2026-08-10', value: '280 千卡', note: '午餐' },
+    { id: 2, type: '运动', date: '2026-08-09', value: '32 分钟', note: '晚间散步' },
+    { id: 3, type: '饮水', date: '2026-08-09', value: '1.2 升', note: '全天饮水' },
+  ],
+  keepsakes: [
+    { id: 1, title: '相识纪念日', date: '2026-09-07', note: '一起吃顿饭' },
+    { id: 2, title: '妈妈生日', date: '2026-12-15', note: '准备生日礼物' },
+  ],
+  diaryEntries: [
+    { id: 1, date: '2026-08-10', mood: '平静', content: '完成了一个小目标。' },
+    { id: 2, date: '2026-08-09', mood: '开心', content: '晚风很舒服，散步让人放松。' },
+  ],
+  sleepEntries: [
+    { id: 1, date: '2026-08-10', sleepTime: '23:18', wakeTime: '06:50', duration: '7 小时 32 分', note: '睡得不错' },
+    { id: 2, date: '2026-08-09', sleepTime: '23:40', wakeTime: '06:30', duration: '6 小时 50 分', note: '' },
+  ],
 };
 
 function usePersistentData() {
@@ -85,6 +103,10 @@ function mergeWorkbenchData(localData, cloudData) {
     tasks: mergeList(localData.tasks, cloudData.tasks),
     records: mergeList(localData.records, cloudData.records),
     events: mergeList(localData.events, cloudData.events),
+    fitnessEntries: mergeList(localData.fitnessEntries, cloudData.fitnessEntries),
+    keepsakes: mergeList(localData.keepsakes, cloudData.keepsakes),
+    diaryEntries: mergeList(localData.diaryEntries, cloudData.diaryEntries),
+    sleepEntries: mergeList(localData.sleepEntries, cloudData.sleepEntries),
   };
 }
 
@@ -226,11 +248,11 @@ function App() {
     home: <HomePage {...pageProps} />,
     tasks: <TasksPage {...pageProps} />,
     accounts: <AccountsPage {...pageProps} />,
-    fitness: <SimpleModule title="减脂记录" icon={Dumbbell} tone="blue" rows={[["今日摄入", "280 千卡"], ["运动时长", "32 分钟"], ["饮水", "1.2 升"]]} />,
+    fitness: <FitnessPage {...pageProps} />,
     schedule: <SchedulePage {...pageProps} />,
-    keepsakes: <SimpleModule title="纪念日" icon={CakeSlice} tone="peach" rows={[["相识纪念日", "还有 28 天"], ["生日提醒", "还有 158 天"]]} />,
-    diary: <SimpleModule title="心情日记" icon={BookHeart} tone="pink" rows={[["今天", "平静、专注"], ["昨天", "完成了一个小目标"]]} />,
-    sleep: <SimpleModule title="睡眠记录" icon={MoonStar} tone="violet" rows={[["昨夜睡眠", "7 小时 32 分"], ["入睡时间", "23:18"], ["起床时间", "06:50"], ["近 7 天平均", "7 小时 16 分"]]} />,
+    keepsakes: <KeepsakesPage {...pageProps} />,
+    diary: <DiaryPage {...pageProps} />,
+    sleep: <SleepPage {...pageProps} />,
     settings: <SettingsPage {...pageProps} />,
   };
 
@@ -398,6 +420,8 @@ function AccountsPage({ data, setData, notify }) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [category, setCategory] = useState('餐饮');
+  const [editingId, setEditingId] = useState(null);
+  const [editing, setEditing] = useState({ amount: '', note: '', category: '餐饮' });
   const total = data.records.reduce((sum, item) => sum + item.amount, 0);
   const addRecord = (event) => {
     event.preventDefault();
@@ -407,6 +431,16 @@ function AccountsPage({ data, setData, notify }) {
     setData((current) => ({ ...current, records: [record, ...current.records] }));
     setAmount(''); setNote(''); notify('账目已记录');
   };
+  const startEdit = (item) => { setEditingId(item.id); setEditing({ amount: String(item.amount), note: item.note, category: item.category }); };
+  const cancelEdit = () => { setEditingId(null); setEditing({ amount: '', note: '', category: '餐饮' }); };
+  const saveEdit = (event, id) => {
+    event.preventDefault();
+    const value = Number(editing.amount);
+    if (!value || value <= 0 || !editing.note.trim()) return;
+    setData((current) => ({ ...current, records: current.records.map((item) => item.id === id ? { ...item, amount: value, note: editing.note.trim(), category: editing.category } : item) }));
+    cancelEdit(); notify('账目已更新');
+  };
+  const remove = (id) => { setData((current) => ({ ...current, records: current.records.filter((item) => item.id !== id) })); notify('账目已删除'); };
   return (
     <section className="page">
       <PageHeader title="轻松记账" icon={WalletCards} action={<div className="month-total"><span>本月支出</span><strong>¥{total}</strong></div>} />
@@ -417,7 +451,16 @@ function AccountsPage({ data, setData, notify }) {
         <button className="primary-button wide" type="submit"><Plus size={19} />记一笔</button>
       </form>
       <h2 className="section-title">最近账目</h2>
-      <div className="record-list panel">{data.records.map((item) => <div className="record-row" key={item.id}><span className="record-emoji">{item.category === '餐饮' ? '🍜' : item.category === '学习' ? '📚' : '🧾'}</span><div><strong>{item.note}</strong><span>{item.category} · {item.time}</span></div><b>-¥{item.amount}</b></div>)}</div>
+      <div className="record-list panel">{data.records.map((item) => editingId === item.id ? (
+        <form className="record-edit-row" key={item.id} onSubmit={(event) => saveEdit(event, item.id)}>
+          <label><span>金额</span><input inputMode="decimal" value={editing.amount} onChange={(event) => setEditing((current) => ({ ...current, amount: event.target.value }))} aria-label="编辑金额" /></label>
+          <label><span>分类</span><select value={editing.category} onChange={(event) => setEditing((current) => ({ ...current, category: event.target.value }))} aria-label="编辑分类"><option>餐饮</option><option>交通</option><option>日用</option><option>学习</option><option>其他</option></select></label>
+          <label className="wide"><span>备注</span><input value={editing.note} onChange={(event) => setEditing((current) => ({ ...current, note: event.target.value }))} aria-label="编辑备注" /></label>
+          <div className="record-edit-actions wide"><button className="primary-button" type="submit"><Check size={17} />保存</button><button className="secondary-button" type="button" onClick={cancelEdit}>取消</button></div>
+        </form>
+      ) : (
+        <div className="record-row" key={item.id}><span className="record-emoji">{item.category === '餐饮' ? '🍜' : item.category === '学习' ? '📚' : '🧾'}</span><div><strong>{item.note}</strong><span>{item.category} · {item.time}</span></div><b>-¥{item.amount}</b><div className="module-record-actions"><button className="icon-button" onClick={() => startEdit(item)} aria-label={`编辑${item.note}`} title="编辑"><Pencil size={17} /></button><button className="icon-button delete" onClick={() => remove(item.id)} aria-label={`删除${item.note}`} title="删除"><Trash2 size={17} /></button></div></div>
+      ))}</div>
     </section>
   );
 }
@@ -440,6 +483,8 @@ function SchedulePage({ data, setData, notify }) {
   const [title, setTitle] = useState('');
   const [time, setTime] = useState('09:00');
   const [reminder, setReminder] = useState('提前15分钟');
+  const [editingId, setEditingId] = useState(null);
+  const [editing, setEditing] = useState({ title: '', date: '', time: '09:00', reminder: '提前15分钟' });
   const days = useMemo(() => buildMonthDays(today.getFullYear(), today.getMonth()), []);
   const addEvent = (event) => {
     event.preventDefault();
@@ -447,6 +492,16 @@ function SchedulePage({ data, setData, notify }) {
     setData((current) => ({ ...current, events: [...current.events, { id: Date.now(), title: title.trim(), date: selectedDate, time, reminder }] }));
     setTitle(''); notify('日程已添加');
   };
+  const startEdit = (item) => { setEditingId(item.id); setEditing({ title: item.title, date: item.date, time: item.time, reminder: item.reminder }); };
+  const cancelEdit = () => { setEditingId(null); setEditing({ title: '', date: '', time: '09:00', reminder: '提前15分钟' }); };
+  const saveEdit = (event, id) => {
+    event.preventDefault();
+    if (!editing.title.trim() || !editing.date) return;
+    setData((current) => ({ ...current, events: current.events.map((item) => item.id === id ? { ...item, ...editing, title: editing.title.trim() } : item) }));
+    cancelEdit(); notify('日程已更新');
+  };
+  const remove = (id) => { setData((current) => ({ ...current, events: current.events.filter((item) => item.id !== id) })); notify('日程已删除'); };
+  const submitSchedule = (event) => editingId ? saveEdit(event, editingId) : addEvent(event);
   const upcoming = [...data.events].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
   return (
     <section className="page schedule-page">
@@ -461,16 +516,16 @@ function SchedulePage({ data, setData, notify }) {
             return <button key={`${item.day}-${index}`} disabled={item.outside} className={`${item.outside ? 'outside' : ''} ${isSelected ? 'selected' : ''}`} onClick={() => setSelectedDate(iso)}>{item.day}</button>;
           })}</div>
         </div>
-        <form className="schedule-form panel" onSubmit={addEvent}>
-          <h2><Sparkles size={21} />添加日程</h2>
-          <label><span>日程内容</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="要做什么" aria-label="日程内容" /></label>
-          <div className="form-pair"><label><span>日期</span><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} aria-label="日期" /></label><label><span>时间</span><input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="时间" /></label></div>
-          <label><span>提醒</span><select value={reminder} onChange={(e) => setReminder(e.target.value)} aria-label="提醒"><option>不提醒</option><option>提前15分钟</option><option>提前1小时</option><option>提前1天</option></select></label>
-          <button className="primary-button" type="submit"><Plus size={19} />添加日程</button>
+        <form className="schedule-form panel" onSubmit={submitSchedule}>
+          <h2><Sparkles size={21} />{editingId ? '编辑日程' : '添加日程'}</h2>
+          <label><span>日程内容</span><input value={editingId ? editing.title : title} onChange={(e) => editingId ? setEditing((current) => ({ ...current, title: e.target.value })) : setTitle(e.target.value)} placeholder="要做什么" aria-label={editingId ? '编辑日程内容' : '日程内容'} /></label>
+          <div className="form-pair"><label><span>日期</span><input type="date" value={editingId ? editing.date : selectedDate} onChange={(e) => editingId ? setEditing((current) => ({ ...current, date: e.target.value })) : setSelectedDate(e.target.value)} aria-label={editingId ? '编辑日期' : '日期'} /></label><label><span>时间</span><input type="time" value={editingId ? editing.time : time} onChange={(e) => editingId ? setEditing((current) => ({ ...current, time: e.target.value })) : setTime(e.target.value)} aria-label={editingId ? '编辑时间' : '时间'} /></label></div>
+          <label><span>提醒</span><select value={editingId ? editing.reminder : reminder} onChange={(e) => editingId ? setEditing((current) => ({ ...current, reminder: e.target.value })) : setReminder(e.target.value)} aria-label={editingId ? '编辑提醒' : '提醒'}><option>不提醒</option><option>提前15分钟</option><option>提前1小时</option><option>提前1天</option></select></label>
+          <div className="record-edit-actions"><button className="primary-button" type="submit">{editingId ? <Check size={19} /> : <Plus size={19} />}{editingId ? '保存修改' : '添加日程'}</button>{editingId && <button className="secondary-button" type="button" onClick={cancelEdit}>取消</button>}</div>
         </form>
       </div>
       <h2 className="section-title">即将到来</h2>
-      <div className="upcoming-list">{upcoming.map((item) => <div className="event-card" key={item.id}><div className="event-date"><strong>{Number(item.date.slice(8))}</strong><span>{Number(item.date.slice(5, 7))}月</span></div><div><strong>{item.title}</strong><span>{item.time} · {item.reminder}</span></div></div>)}</div>
+      <div className="upcoming-list">{upcoming.map((item) => <div className="event-card" key={item.id}><div className="event-date"><strong>{Number(item.date.slice(8))}</strong><span>{Number(item.date.slice(5, 7))}月</span></div><div><strong>{item.title}</strong><span>{item.time} · {item.reminder}</span></div><div className="module-record-actions"><button className="icon-button" onClick={() => startEdit(item)} aria-label={`编辑${item.title}`} title="编辑"><Pencil size={17} /></button><button className="icon-button delete" onClick={() => remove(item.id)} aria-label={`删除${item.title}`} title="删除"><Trash2 size={17} /></button></div></div>)}</div>
     </section>
   );
 }
@@ -515,8 +570,71 @@ function SettingRow({ icon: Icon, title, detail, tone, children }) {
   return <div className="setting-row"><span className={`setting-icon tone-${tone}`}><Icon size={21} /></span><div><strong>{title}</strong><small>{detail}</small></div>{children}</div>;
 }
 
-function SimpleModule({ title, icon: Icon, tone, rows }) {
-  return <section className="page"><PageHeader title={title} icon={Icon} /><div className="simple-summary panel"><div className={`module-illustration tone-${tone}`}><Icon size={40} /></div>{rows.map(([label, value]) => <div className="summary-row" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div></section>;
+const MODULE_CONFIG = {
+  fitness: {
+    title: '减脂记录', icon: Dumbbell, tone: 'blue', dataKey: 'fitnessEntries', addLabel: '添加记录', empty: '还没有减脂记录',
+    fields: [{ key: 'type', label: '类型', type: 'select', options: ['饮食', '运动', '饮水'] }, { key: 'date', label: '日期', type: 'date' }, { key: 'value', label: '数值', type: 'text', placeholder: '例如 30 分钟' }, { key: 'note', label: '备注', type: 'text', placeholder: '补充说明', wide: true }],
+    detail: (item) => `${item.type} · ${item.value} · ${item.note || '未填写备注'}`,
+  },
+  keepsakes: {
+    title: '纪念日', icon: CakeSlice, tone: 'peach', dataKey: 'keepsakes', addLabel: '添加纪念日', empty: '还没有纪念日记录',
+    fields: [{ key: 'title', label: '纪念内容', type: 'text', placeholder: '例如 相识纪念日', wide: true }, { key: 'date', label: '日期', type: 'date' }, { key: 'note', label: '备注', type: 'text', placeholder: '准备做什么' }],
+    detail: (item) => `${item.date} · ${item.note || '未填写备注'}`,
+  },
+  diary: {
+    title: '心情日记', icon: BookHeart, tone: 'pink', dataKey: 'diaryEntries', addLabel: '写下日记', empty: '还没有日记记录',
+    fields: [{ key: 'date', label: '日期', type: 'date' }, { key: 'mood', label: '心情', type: 'select', options: ['开心', '平静', '疲惫', '难过', '期待'] }, { key: 'content', label: '日记内容', type: 'textarea', placeholder: '记录此刻的想法', wide: true }],
+    detail: (item) => `${item.date} · ${item.mood}`,
+  },
+  sleep: {
+    title: '睡眠记录', icon: MoonStar, tone: 'violet', dataKey: 'sleepEntries', addLabel: '添加睡眠', empty: '还没有睡眠记录',
+    fields: [{ key: 'date', label: '日期', type: 'date' }, { key: 'sleepTime', label: '入睡时间', type: 'time' }, { key: 'wakeTime', label: '起床时间', type: 'time' }, { key: 'duration', label: '睡眠时长', type: 'text', placeholder: '例如 7 小时 30 分' }, { key: 'note', label: '备注', type: 'text', placeholder: '睡眠感受', wide: true }],
+    detail: (item) => `${item.date} · ${item.sleepTime} - ${item.wakeTime} · ${item.duration}${item.note ? ` · ${item.note}` : ''}`,
+  },
+};
+
+function moduleInitialForm(kind) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (kind === 'fitness') return { type: '饮食', date: today, value: '', note: '' };
+  if (kind === 'keepsakes') return { title: '', date: today, note: '' };
+  if (kind === 'diary') return { date: today, mood: '平静', content: '' };
+  return { date: today, sleepTime: '23:00', wakeTime: '07:00', duration: '', note: '' };
 }
+
+function EditableModulePage({ kind, data, setData, notify }) {
+  const config = MODULE_CONFIG[kind];
+  const Icon = config.icon;
+  const [form, setForm] = useState(() => moduleInitialForm(kind));
+  const [editingId, setEditingId] = useState(null);
+  const entries = data[config.dataKey] || [];
+  const reset = () => { setForm(moduleInitialForm(kind)); setEditingId(null); };
+  const updateField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = (event) => {
+    event.preventDefault();
+    const required = kind === 'diary' ? form.content : kind === 'keepsakes' ? form.title : kind === 'sleep' ? form.duration : form.value;
+    if (!required?.trim() || !form.date) return;
+    setData((current) => ({ ...current, [config.dataKey]: editingId ? current[config.dataKey].map((item) => item.id === editingId ? { ...item, ...form } : item) : [{ id: Date.now(), ...form }, ...current[config.dataKey]] }));
+    notify(editingId ? '记录已更新' : `${config.title}已添加`);
+    reset();
+  };
+  const startEdit = (item) => { setEditingId(item.id); setForm({ ...moduleInitialForm(kind), ...item }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const remove = (id) => { setData((current) => ({ ...current, [config.dataKey]: current[config.dataKey].filter((item) => item.id !== id) })); notify('记录已删除'); };
+  return (
+    <section className="page">
+      <PageHeader title={config.title} icon={config.icon} />
+      <form className="entry-form panel module-entry-form" onSubmit={submit}>
+        {config.fields.map((field) => <label className={field.wide ? 'wide' : ''} key={field.key}><span>{field.label}</span>{field.type === 'select' ? <select value={form[field.key]} onChange={(event) => updateField(field.key, event.target.value)} aria-label={field.label}>{field.options.map((option) => <option key={option}>{option}</option>)}</select> : field.type === 'textarea' ? <textarea value={form[field.key]} onChange={(event) => updateField(field.key, event.target.value)} placeholder={field.placeholder} aria-label={field.label} /> : <input type={field.type} value={form[field.key]} onChange={(event) => updateField(field.key, event.target.value)} placeholder={field.placeholder} aria-label={field.label} />}</label>)}
+        <div className="record-edit-actions wide"><button className="primary-button" type="submit">{editingId ? <Pencil size={18} /> : <Plus size={18} />}{editingId ? '保存修改' : config.addLabel}</button>{editingId && <button className="secondary-button" type="button" onClick={reset}>取消</button>}</div>
+      </form>
+      <h2 className="section-title">历史记录</h2>
+      <div className="module-record-list panel">{entries.length ? entries.map((item) => editingId === item.id ? <div className="module-inline-hint" key={item.id}>正在编辑上方记录，保存或取消后继续操作</div> : <div className="module-record" key={item.id}><div className={`module-record-icon tone-${config.tone}`}><Icon size={19} /></div><div><strong>{kind === 'diary' ? item.content : kind === 'keepsakes' ? item.title : kind === 'sleep' ? item.duration : `${item.type} · ${item.value}`}</strong><span>{config.detail(item)}</span></div><div className="module-record-actions"><button className="icon-button" onClick={() => startEdit(item)} aria-label="编辑记录" title="编辑"><Pencil size={17} /></button><button className="icon-button delete" onClick={() => remove(item.id)} aria-label="删除记录" title="删除"><Trash2 size={17} /></button></div></div>) : <p className="empty-state">{config.empty}</p>}</div>
+    </section>
+  );
+}
+
+function FitnessPage(props) { return <EditableModulePage kind="fitness" {...props} />; }
+function KeepsakesPage(props) { return <EditableModulePage kind="keepsakes" {...props} />; }
+function DiaryPage(props) { return <EditableModulePage kind="diary" {...props} />; }
+function SleepPage(props) { return <EditableModulePage kind="sleep" {...props} />; }
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);
