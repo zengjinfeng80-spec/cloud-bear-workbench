@@ -47,9 +47,9 @@ const DEFAULT_DATA = {
     { id: 3, text: '晚上散步 20 分钟', done: false },
   ],
   records: [
-    { id: 1, amount: 35, note: '午餐', category: '餐饮', time: '今天 12:20' },
-    { id: 2, amount: 68, note: '生活用品', category: '日用', time: '昨天 18:40' },
-    { id: 3, amount: 25, note: '咖啡', category: '餐饮', time: '昨天 09:15' },
+    { id: 1, amount: 35, note: '午餐', category: '餐饮', date: '2026-08-10', time: '今天 12:20' },
+    { id: 2, amount: 68, note: '生活用品', category: '日用', date: '2026-08-09', time: '昨天 18:40' },
+    { id: 3, amount: 25, note: '咖啡', category: '餐饮', date: '2026-08-09', time: '昨天 09:15' },
   ],
   events: [
     { id: 1, title: '复习经济法', date: '2026-08-01', time: '19:30', reminder: '提前15分钟' },
@@ -188,6 +188,17 @@ function getGreeting(date) {
   if (hour >= 5 && hour < 11) return '早安';
   if (hour >= 11 && hour < 18) return '午安';
   return '晚上好';
+}
+
+function getTodayIso() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  const [year, month, day] = value.split('-');
+  return `${year}年${Number(month)}月${Number(day)}日`;
 }
 
 function App() {
@@ -342,6 +353,8 @@ function HomePage({ data, setActive }) {
   const [now, setNow] = useState(() => new Date());
   const completed = data.tasks.filter((task) => task.done).length;
   const progress = data.tasks.length ? Math.round((completed / data.tasks.length) * 100) : 0;
+  const todayIso = getTodayIso();
+  const todaySpending = data.records.reduce((sum, item) => item.date === todayIso || (!item.date && item.time?.startsWith('今天')) ? sum + item.amount : sum, 0);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -367,7 +380,7 @@ function HomePage({ data, setActive }) {
       <div className="stat-grid">
         <button className="stat-card card-tasks" onClick={() => setActive('tasks')}><span className="stat-emoji">✓</span><strong>{data.tasks.length}</strong><span>今日待办</span></button>
         <button className="stat-card card-fitness" onClick={() => setActive('fitness')}><span className="stat-emoji">◒</span><strong>280</strong><span>摄入千卡</span></button>
-        <button className="stat-card card-accounts" onClick={() => setActive('accounts')}><span className="stat-emoji">¥</span><strong>{data.records.reduce((sum, item) => sum + item.amount, 0)}</strong><span>今日支出</span></button>
+        <button className="stat-card card-accounts" onClick={() => setActive('accounts')}><span className="stat-emoji">¥</span><strong>{todaySpending}</strong><span>今日支出</span></button>
         <button className="stat-card card-sleep" onClick={() => setActive('sleep')}><span className="stat-emoji">☾</span><strong>7小时32分</strong><span>昨夜睡眠</span></button>
       </div>
 
@@ -420,24 +433,25 @@ function AccountsPage({ data, setData, notify }) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [category, setCategory] = useState('餐饮');
+  const [date, setDate] = useState(getTodayIso);
   const [editingId, setEditingId] = useState(null);
-  const [editing, setEditing] = useState({ amount: '', note: '', category: '餐饮' });
+  const [editing, setEditing] = useState({ amount: '', note: '', category: '餐饮', date: getTodayIso() });
   const total = data.records.reduce((sum, item) => sum + item.amount, 0);
   const addRecord = (event) => {
     event.preventDefault();
     const value = Number(amount);
     if (!value || value <= 0 || !note.trim()) return;
-    const record = { id: Date.now(), amount: value, note: note.trim(), category, time: '刚刚' };
+    const record = { id: Date.now(), amount: value, note: note.trim(), category, date, time: '刚刚' };
     setData((current) => ({ ...current, records: [record, ...current.records] }));
-    setAmount(''); setNote(''); notify('账目已记录');
+    setAmount(''); setNote(''); setDate(getTodayIso()); notify('账目已记录');
   };
-  const startEdit = (item) => { setEditingId(item.id); setEditing({ amount: String(item.amount), note: item.note, category: item.category }); };
-  const cancelEdit = () => { setEditingId(null); setEditing({ amount: '', note: '', category: '餐饮' }); };
+  const startEdit = (item) => { setEditingId(item.id); setEditing({ amount: String(item.amount), note: item.note, category: item.category, date: item.date || getTodayIso() }); };
+  const cancelEdit = () => { setEditingId(null); setEditing({ amount: '', note: '', category: '餐饮', date: getTodayIso() }); };
   const saveEdit = (event, id) => {
     event.preventDefault();
     const value = Number(editing.amount);
     if (!value || value <= 0 || !editing.note.trim()) return;
-    setData((current) => ({ ...current, records: current.records.map((item) => item.id === id ? { ...item, amount: value, note: editing.note.trim(), category: editing.category } : item) }));
+    setData((current) => ({ ...current, records: current.records.map((item) => item.id === id ? { ...item, amount: value, note: editing.note.trim(), category: editing.category, date: editing.date } : item) }));
     cancelEdit(); notify('账目已更新');
   };
   const remove = (id) => { setData((current) => ({ ...current, records: current.records.filter((item) => item.id !== id) })); notify('账目已删除'); };
@@ -447,6 +461,7 @@ function AccountsPage({ data, setData, notify }) {
       <form className="entry-form panel" onSubmit={addRecord}>
         <label><span>金额</span><input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" aria-label="金额" /></label>
         <label><span>分类</span><select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="分类"><option>餐饮</option><option>交通</option><option>日用</option><option>学习</option><option>其他</option></select></label>
+        <label className="wide"><span>日期</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} aria-label="记账日期" required /></label>
         <label className="wide"><span>备注</span><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="这笔钱花在了哪里" aria-label="备注" /></label>
         <button className="primary-button wide" type="submit"><Plus size={19} />记一笔</button>
       </form>
@@ -455,11 +470,12 @@ function AccountsPage({ data, setData, notify }) {
         <form className="record-edit-row" key={item.id} onSubmit={(event) => saveEdit(event, item.id)}>
           <label><span>金额</span><input inputMode="decimal" value={editing.amount} onChange={(event) => setEditing((current) => ({ ...current, amount: event.target.value }))} aria-label="编辑金额" /></label>
           <label><span>分类</span><select value={editing.category} onChange={(event) => setEditing((current) => ({ ...current, category: event.target.value }))} aria-label="编辑分类"><option>餐饮</option><option>交通</option><option>日用</option><option>学习</option><option>其他</option></select></label>
+          <label className="wide"><span>日期</span><input type="date" value={editing.date} onChange={(event) => setEditing((current) => ({ ...current, date: event.target.value }))} aria-label="编辑日期" required /></label>
           <label className="wide"><span>备注</span><input value={editing.note} onChange={(event) => setEditing((current) => ({ ...current, note: event.target.value }))} aria-label="编辑备注" /></label>
           <div className="record-edit-actions wide"><button className="primary-button" type="submit"><Check size={17} />保存</button><button className="secondary-button" type="button" onClick={cancelEdit}>取消</button></div>
         </form>
       ) : (
-        <div className="record-row" key={item.id}><span className="record-emoji">{item.category === '餐饮' ? '🍜' : item.category === '学习' ? '📚' : '🧾'}</span><div><strong>{item.note}</strong><span>{item.category} · {item.time}</span></div><b>-¥{item.amount}</b><div className="module-record-actions"><button className="icon-button" onClick={() => startEdit(item)} aria-label={`编辑${item.note}`} title="编辑"><Pencil size={17} /></button><button className="icon-button delete" onClick={() => remove(item.id)} aria-label={`删除${item.note}`} title="删除"><Trash2 size={17} /></button></div></div>
+        <div className="record-row" key={item.id}><span className="record-emoji">{item.category === '餐饮' ? '🍜' : item.category === '学习' ? '📚' : '🧾'}</span><div><strong>{item.note}</strong><span>{item.category} · {item.date ? formatDate(item.date) : item.time}</span></div><b>-¥{item.amount}</b><div className="module-record-actions"><button className="icon-button" onClick={() => startEdit(item)} aria-label={`编辑${item.note}`} title="编辑"><Pencil size={17} /></button><button className="icon-button delete" onClick={() => remove(item.id)} aria-label={`删除${item.note}`} title="删除"><Trash2 size={17} /></button></div></div>
       ))}</div>
     </section>
   );
